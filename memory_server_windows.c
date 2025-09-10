@@ -5,296 +5,291 @@
 #include <ws2tcpip.h>
 #include <time.h>
 
-#define MAX_PLAYERS 4
-#define BOARD_SIZE 16 // 4x4 board
-#define PORT 8080
-#define BUFFER_SIZE 1024
+#define MAX_JOGADORES 4
+#define TAMANHO_TABULEIRO 16
+#define PORTA 8080
+#define TAMANHO_BUFFER 1024
 
-// Link with Ws2_32.lib
 #pragma comment(lib, "Ws2_32.lib")
 
 typedef struct {
     SOCKET socket;
     int id;
-    char name[50];
-    int score;
-    int active;
-} Player;
+    char nome[50];
+    int pontuacao;
+    int ativo;
+} Jogador;
 
 typedef struct {
-    int cards[BOARD_SIZE];
-    int revealed[BOARD_SIZE];
-    int pairs_found;
-    Player players[MAX_PLAYERS];
-    int player_count;
-    int current_player;
-    int game_started;
-    CRITICAL_SECTION game_mutex;
-} GameState;
+    int cartas[TAMANHO_TABULEIRO];
+    int reveladas[TAMANHO_TABULEIRO];
+    int pares_encontrados;
+    Jogador jogadores[MAX_JOGADORES];
+    int total_jogadores;
+    int jogador_atual;
+    int jogo_iniciado;
+    CRITICAL_SECTION mutex_jogo;
+} EstadoJogo;
 
-// Prototypes
-void send_turn_info();
-DWORD WINAPI handle_client(LPVOID lpParam);
-void print_local_ip(int port);
-void handle_move(int player_id, int pos1, int pos2);
-void broadcast_message(const char* message, int exclude_player);
-void send_board_state(SOCKET player_socket);
-void send_scores();
-int check_game_end();
-int find_next_active_player(int current);
+void enviar_info_turno();
+DWORD WINAPI gerenciar_cliente(LPVOID lpParam);
+void imprimir_ip_local(int porta);
+void processar_jogada(int id_jogador, int pos1, int pos2);
+void transmitir_mensagem(const char* mensagem, int excluir_jogador);
+void enviar_estado_tabuleiro(SOCKET socket_jogador);
+void enviar_pontuacoes();
+int verificar_fim_jogo();
+int encontrar_proximo_jogador_ativo(int atual);
 
-GameState game_state;
+EstadoJogo estado_jogo;
 
-void initialize_game() {
-    printf("Initializing game...\n");
+void inicializar_jogo() {
+    printf("Inicializando jogo...\n");
     
-    for (int i = 0; i < BOARD_SIZE; i += 2) {
-        game_state.cards[i] = (i / 2) + 1;
-        game_state.cards[i + 1] = (i / 2) + 1;
-        game_state.revealed[i] = 0;
-        game_state.revealed[i + 1] = 0;
+    for (int i = 0; i < TAMANHO_TABULEIRO; i += 2) {
+        estado_jogo.cartas[i] = (i / 2) + 1;
+        estado_jogo.cartas[i + 1] = (i / 2) + 1;
+        estado_jogo.reveladas[i] = 0;
+        estado_jogo.reveladas[i + 1] = 0;
     }
     
     srand(time(NULL));
-    for (int i = BOARD_SIZE - 1; i > 0; i--) {
+    for (int i = TAMANHO_TABULEIRO - 1; i > 0; i--) {
         int j = rand() % (i + 1);
-        int temp = game_state.cards[i];
-        game_state.cards[i] = game_state.cards[j];
-        game_state.cards[j] = temp;
+        int temp = estado_jogo.cartas[i];
+        estado_jogo.cartas[i] = estado_jogo.cartas[j];
+        estado_jogo.cartas[j] = temp;
     }
     
-    game_state.pairs_found = 0;
-    game_state.current_player = 0;
+    estado_jogo.pares_encontrados = 0;
+    estado_jogo.jogador_atual = 0;
     
-    printf("Shuffled cards: ");
-    for (int i = 0; i < BOARD_SIZE; i++) {
-        printf("%d ", game_state.cards[i]);
+    printf("Cartas embaralhadas: ");
+    for (int i = 0; i < TAMANHO_TABULEIRO; i++) {
+        printf("%d ", estado_jogo.cartas[i]);
     }
     printf("\n");
 }
 
-void initialize_server() {
-    game_state.player_count = 0;
-    game_state.game_started = 0;
-    InitializeCriticalSection(&game_state.game_mutex);
+void inicializar_servidor() {
+    estado_jogo.total_jogadores = 0;
+    estado_jogo.jogo_iniciado = 0;
+    InitializeCriticalSection(&estado_jogo.mutex_jogo);
     
-    for (int i = 0; i < MAX_PLAYERS; i++) {
-        game_state.players[i].active = 0;
-        game_state.players[i].score = 0;
-        strcpy(game_state.players[i].name, "");
+    for (int i = 0; i < MAX_JOGADORES; i++) {
+        estado_jogo.jogadores[i].ativo = 0;
+        estado_jogo.jogadores[i].pontuacao = 0;
+        strcpy(estado_jogo.jogadores[i].nome, "");
     }
 }
 
-void broadcast_message(const char* message, int exclude_player) {
-    printf("Broadcasting: %s", message);
-    EnterCriticalSection(&game_state.game_mutex);
+void transmitir_mensagem(const char* mensagem, int excluir_jogador) {
+    printf("Transmitindo: %s", mensagem);
+    EnterCriticalSection(&estado_jogo.mutex_jogo);
     
-    int msg_len = strlen(message);
+    int tamanho_msg = strlen(mensagem);
     
-    for (int i = 0; i < game_state.player_count; i++) {
-        if (game_state.players[i].active && i != exclude_player) {
-            int total_sent = 0;
+    for (int i = 0; i < estado_jogo.total_jogadores; i++) {
+        if (estado_jogo.jogadores[i].ativo && i != excluir_jogador) {
+            int total_enviado = 0;
             
-            while (total_sent < msg_len) {
-                int sent = send(game_state.players[i].socket, 
-                                message + total_sent, 
-                                msg_len - total_sent, 0);
+            while (total_enviado < tamanho_msg) {
+                int enviado = send(estado_jogo.jogadores[i].socket, 
+                                mensagem + total_enviado, 
+                                tamanho_msg - total_enviado, 0);
                 
-                if (sent == SOCKET_ERROR) {
-                    printf("Failed to send to player %d, marking as inactive\n", i);
-                    game_state.players[i].active = 0;
-                    closesocket(game_state.players[i].socket);
+                if (enviado == SOCKET_ERROR) {
+                    printf("Falha ao enviar para jogador %d, marcando como inativo\n", i);
+                    estado_jogo.jogadores[i].ativo = 0;
+                    closesocket(estado_jogo.jogadores[i].socket);
                     break;
                 }
                 
-                total_sent += sent;
+                total_enviado += enviado;
             }
             
-            if (total_sent == msg_len) {
-                printf("Successfully sent %d bytes to player %d\n", total_sent, i);
+            if (total_enviado == tamanho_msg) {
+                printf("Enviado com sucesso %d bytes para jogador %d\n", total_enviado, i);
             }
         }
     }
     
-    LeaveCriticalSection(&game_state.game_mutex);
+    LeaveCriticalSection(&estado_jogo.mutex_jogo);
 }
 
-void send_board_state(SOCKET player_socket) {
-    char board_msg[2048] = "BOARD|";
-    for (int i = 0; i < BOARD_SIZE; i++) {
-        char card_info[10];
-        if (game_state.revealed[i]) {
-            sprintf(card_info, "%d", game_state.cards[i]);
+void enviar_estado_tabuleiro(SOCKET socket_jogador) {
+    char msg_tabuleiro[2048] = "BOARD|";
+    for (int i = 0; i < TAMANHO_TABULEIRO; i++) {
+        char info_carta[10];
+        if (estado_jogo.reveladas[i]) {
+            sprintf(info_carta, "%d", estado_jogo.cartas[i]);
         } else {
-            strcpy(card_info, "X");
+            strcpy(info_carta, "X");
         }
-        strcat(board_msg, card_info);
-        if (i < BOARD_SIZE - 1) strcat(board_msg, ",");
+        strcat(msg_tabuleiro, info_carta);
+        if (i < TAMANHO_TABULEIRO - 1) strcat(msg_tabuleiro, ",");
     }
-    strcat(board_msg, "\n");
-    printf("Sending board state: %s", board_msg);
-    send(player_socket, board_msg, strlen(board_msg), 0);
+    strcat(msg_tabuleiro, "\n");
+    printf("Enviando estado do tabuleiro: %s", msg_tabuleiro);
+    send(socket_jogador, msg_tabuleiro, strlen(msg_tabuleiro), 0);
 }
 
-void send_scores() {
-    char score_msg[512] = "SCORES|";
-    int first = 1;
-    for (int i = 0; i < game_state.player_count; i++) {
-        if (game_state.players[i].active) {
-            char player_score[100];
-            if (!first) strcat(score_msg, ",");
-            sprintf(player_score, "%s:%d", game_state.players[i].name, game_state.players[i].score);
-            strcat(score_msg, player_score);
-            first = 0;
+void enviar_pontuacoes() {
+    char msg_pontuacao[512] = "SCORES|";
+    int primeiro = 1;
+    for (int i = 0; i < estado_jogo.total_jogadores; i++) {
+        if (estado_jogo.jogadores[i].ativo) {
+            char pontuacao_jogador[100];
+            if (!primeiro) strcat(msg_pontuacao, ",");
+            sprintf(pontuacao_jogador, "%s:%d", estado_jogo.jogadores[i].nome, estado_jogo.jogadores[i].pontuacao);
+            strcat(msg_pontuacao, pontuacao_jogador);
+            primeiro = 0;
         }
     }
-    strcat(score_msg, "\n");
-    broadcast_message(score_msg, -1);
+    strcat(msg_pontuacao, "\n");
+    transmitir_mensagem(msg_pontuacao, -1);
 }
 
-void send_turn_info() {
-    if (game_state.players[game_state.current_player].active) {
-        char turn_msg[256];
-        sprintf(turn_msg, "TURN|%d|%s\n", game_state.current_player, 
-                game_state.players[game_state.current_player].name);
-        broadcast_message(turn_msg, -1);
+void enviar_info_turno() {
+    if (estado_jogo.jogadores[estado_jogo.jogador_atual].ativo) {
+        char msg_turno[256];
+        sprintf(msg_turno, "TURN|%d|%s\n", estado_jogo.jogador_atual, 
+                estado_jogo.jogadores[estado_jogo.jogador_atual].nome);
+        transmitir_mensagem(msg_turno, -1);
     }
 }
 
-int check_game_end() {
-    return game_state.pairs_found >= (BOARD_SIZE / 2);
+int verificar_fim_jogo() {
+    return estado_jogo.pares_encontrados >= (TAMANHO_TABULEIRO / 2);
 }
 
-int find_next_active_player(int current) {
-    int next = (current + 1) % game_state.player_count;
-    int attempts = 0;
+int encontrar_proximo_jogador_ativo(int atual) {
+    int proximo = (atual + 1) % estado_jogo.total_jogadores;
+    int tentativas = 0;
     
-    while (!game_state.players[next].active && attempts < game_state.player_count) {
-        next = (next + 1) % game_state.player_count;
-        attempts++;
+    while (!estado_jogo.jogadores[proximo].ativo && tentativas < estado_jogo.total_jogadores) {
+        proximo = (proximo + 1) % estado_jogo.total_jogadores;
+        tentativas++;
     }
     
-    if (attempts >= game_state.player_count) {
-        return current;
+    if (tentativas >= estado_jogo.total_jogadores) {
+        return atual;
     }
     
-    return next;
+    return proximo;
 }
 
-void handle_move(int player_id, int pos1, int pos2) {
-    printf("Handle move: player %d, positions %d,%d\n", player_id, pos1, pos2);
+void processar_jogada(int id_jogador, int pos1, int pos2) {
+    printf("Processar jogada: jogador %d, posicoes %d,%d\n", id_jogador, pos1, pos2);
     
-    EnterCriticalSection(&game_state.game_mutex);
+    EnterCriticalSection(&estado_jogo.mutex_jogo);
     
-    if (player_id != game_state.current_player || !game_state.game_started) {
-        printf("Not player's turn or game not started\n");
-        char error_msg[] = "ERROR|Not your turn or game not started\n";
-        send(game_state.players[player_id].socket, error_msg, strlen(error_msg), 0);
-        LeaveCriticalSection(&game_state.game_mutex);
+    if (id_jogador != estado_jogo.jogador_atual || !estado_jogo.jogo_iniciado) {
+        printf("Nao eh turno do jogador ou jogo nao iniciado\n");
+        char msg_erro[] = "ERROR|Not your turn or game not started\n";
+        send(estado_jogo.jogadores[id_jogador].socket, msg_erro, strlen(msg_erro), 0);
+        LeaveCriticalSection(&estado_jogo.mutex_jogo);
         return;
     }
     
-    if (pos1 < 0 || pos1 >= BOARD_SIZE || pos2 < 0 || pos2 >= BOARD_SIZE || 
-        pos1 == pos2 || game_state.revealed[pos1] || game_state.revealed[pos2]) {
-        printf("Invalid move\n");
-        char error_msg[] = "ERROR|Invalid move\n";
-        send(game_state.players[player_id].socket, error_msg, strlen(error_msg), 0);
-        LeaveCriticalSection(&game_state.game_mutex);
+    if (pos1 < 0 || pos1 >= TAMANHO_TABULEIRO || pos2 < 0 || pos2 >= TAMANHO_TABULEIRO || 
+        pos1 == pos2 || estado_jogo.reveladas[pos1] || estado_jogo.reveladas[pos2]) {
+        printf("Jogada invalida\n");
+        char msg_erro[] = "ERROR|Invalid move\n";
+        send(estado_jogo.jogadores[id_jogador].socket, msg_erro, strlen(msg_erro), 0);
+        LeaveCriticalSection(&estado_jogo.mutex_jogo);
         return;
     }
     
-    printf("Valid move - cards: %d and %d\n", game_state.cards[pos1], game_state.cards[pos2]);
+    printf("Jogada valida - cartas: %d e %d\n", estado_jogo.cartas[pos1], estado_jogo.cartas[pos2]);
     
-    char reveal_msg[256];
-    sprintf(reveal_msg, "REVEAL|%d,%d|%d,%d\n", pos1, pos2, 
-            game_state.cards[pos1], game_state.cards[pos2]);
-    broadcast_message(reveal_msg, -1);
+    char msg_revelar[256];
+    sprintf(msg_revelar, "REVEAL|%d,%d|%d,%d\n", pos1, pos2, 
+            estado_jogo.cartas[pos1], estado_jogo.cartas[pos2]);
+    transmitir_mensagem(msg_revelar, -1);
     
-    if (game_state.cards[pos1] == game_state.cards[pos2]) {
-        printf("Match found!\n");
-        game_state.revealed[pos1] = 1;
-        game_state.revealed[pos2] = 1;
-        game_state.players[player_id].score++;
-        game_state.pairs_found++;
+    if (estado_jogo.cartas[pos1] == estado_jogo.cartas[pos2]) {
+        printf("Par encontrado!\n");
+        estado_jogo.reveladas[pos1] = 1;
+        estado_jogo.reveladas[pos2] = 1;
+        estado_jogo.jogadores[id_jogador].pontuacao++;
+        estado_jogo.pares_encontrados++;
         
-        char match_msg[] = "MATCH|Cards matched!\n";
-        broadcast_message(match_msg, -1);
+        char msg_par[] = "MATCH|Cards matched!\n";
+        transmitir_mensagem(msg_par, -1);
         
     } else {
         Sleep(2000);
-        printf("No match\n");
-        char no_match_msg[] = "NO_MATCH|Cards don't match!\n";
-        broadcast_message(no_match_msg, -1);
+        printf("Nao eh par\n");
+        char msg_nao_par[] = "NO_MATCH|Cards don't match!\n";
+        transmitir_mensagem(msg_nao_par, -1);
 
-        game_state.current_player = find_next_active_player(game_state.current_player);
-        printf("Next player: %d\n", game_state.current_player);
+        estado_jogo.jogador_atual = encontrar_proximo_jogador_ativo(estado_jogo.jogador_atual);
+        printf("Proximo jogador: %d\n", estado_jogo.jogador_atual);
     }
     
-    for (int i = 0; i < game_state.player_count; i++) {
-        if (game_state.players[i].active) {
-            send_board_state(game_state.players[i].socket);
+    for (int i = 0; i < estado_jogo.total_jogadores; i++) {
+        if (estado_jogo.jogadores[i].ativo) {
+            enviar_estado_tabuleiro(estado_jogo.jogadores[i].socket);
         }
     }
     
-    send_scores();
+    enviar_pontuacoes();
     
-    if (check_game_end()) {
-        int winner = 0;
-        int max_score = -1;
-        for (int i = 0; i < game_state.player_count; i++) {
-            if (game_state.players[i].active && game_state.players[i].score > max_score) {
-                max_score = game_state.players[i].score;
-                winner = i;
+    if (verificar_fim_jogo()) {
+        int vencedor = 0;
+        int pontuacao_maxima = -1;
+        for (int i = 0; i < estado_jogo.total_jogadores; i++) {
+            if (estado_jogo.jogadores[i].ativo && estado_jogo.jogadores[i].pontuacao > pontuacao_maxima) {
+                pontuacao_maxima = estado_jogo.jogadores[i].pontuacao;
+                vencedor = i;
             }
         }
         
-        char end_msg[256];
-        sprintf(end_msg, "GAME_END|Winner: %s with %d pairs!\n", 
-                game_state.players[winner].name, max_score);
-        broadcast_message(end_msg, -1);
-        game_state.game_started = 0;
-        printf("Game ended. Winner: %s\n", game_state.players[winner].name);
+        char msg_fim[256];
+        sprintf(msg_fim, "GAME_END|Winner: %s with %d pairs!\n", 
+                estado_jogo.jogadores[vencedor].nome, pontuacao_maxima);
+        transmitir_mensagem(msg_fim, -1);
+        estado_jogo.jogo_iniciado = 0;
+        printf("Jogo finalizado. Vencedor: %s\n", estado_jogo.jogadores[vencedor].nome);
     } else {
-        send_turn_info();
+        enviar_info_turno();
     }
     
-    LeaveCriticalSection(&game_state.game_mutex);
+    LeaveCriticalSection(&estado_jogo.mutex_jogo);
 }
 
-DWORD WINAPI handle_client(LPVOID lpParam) {
-    SOCKET client_socket = *(SOCKET*)lpParam;
+DWORD WINAPI gerenciar_cliente(LPVOID lpParam) {
+    SOCKET socket_cliente = *(SOCKET*)lpParam;
     free(lpParam);
-    char buffer[BUFFER_SIZE];
-    int player_id = -1;
+    char buffer[TAMANHO_BUFFER];
+    int id_jogador = -1;
     
-    EnterCriticalSection(&game_state.game_mutex);
-    if (game_state.player_count < MAX_PLAYERS) {
-        player_id = game_state.player_count;
-        game_state.players[player_id].socket = client_socket;
-        game_state.players[player_id].id = player_id;
-        game_state.players[player_id].score = 0;
-        game_state.players[player_id].active = 1;
-        game_state.player_count++;
+    EnterCriticalSection(&estado_jogo.mutex_jogo);
+    if (estado_jogo.total_jogadores < MAX_JOGADORES) {
+        id_jogador = estado_jogo.total_jogadores;
+        estado_jogo.jogadores[id_jogador].socket = socket_cliente;
+        estado_jogo.jogadores[id_jogador].id = id_jogador;
+        estado_jogo.jogadores[id_jogador].pontuacao = 0;
+        estado_jogo.jogadores[id_jogador].ativo = 1;
+        estado_jogo.total_jogadores++;
     }
-    LeaveCriticalSection(&game_state.game_mutex);
+    LeaveCriticalSection(&estado_jogo.mutex_jogo);
     
-    if (player_id == -1) {
-        char full_msg[] = "ERROR|Server full\n";
-        send(client_socket, full_msg, strlen(full_msg), 0);
-        closesocket(client_socket);
+    if (id_jogador == -1) {
+        char msg_cheio[] = "ERROR|Server full\n";
+        send(socket_cliente, msg_cheio, strlen(msg_cheio), 0);
+        closesocket(socket_cliente);
         return 1;
     }
     
-    printf("Player %d connected\n", player_id);
+    printf("Jogador %d conectado\n", id_jogador);
     
     while (1) {
-        int bytes_received = recv(client_socket, buffer, BUFFER_SIZE - 1, 0);
-        if (bytes_received <= 0) {
+        int bytes_recebidos = recv(socket_cliente, buffer, TAMANHO_BUFFER - 1, 0);
+        if (bytes_recebidos <= 0) {
             break;
         }
-        
-        // buffer[bytes_received] = '\0';
-        // printf("Received from player %d: %s", player_id, buffer);
         
         char* token = strtok(buffer, "|\n\r");
         if (token == NULL) continue;
@@ -302,108 +297,108 @@ DWORD WINAPI handle_client(LPVOID lpParam) {
         if (strcmp(token, "JOIN") == 0) {
             token = strtok(NULL, "|\n\r");
             if (token != NULL) {
-                strcpy(game_state.players[player_id].name, token);
-                char welcome_msg[256];
-                sprintf(welcome_msg, "WELCOME|Player %d: %s\n", player_id, token);
-                send(client_socket, welcome_msg, strlen(welcome_msg), 0);
+                strcpy(estado_jogo.jogadores[id_jogador].nome, token);
+                char msg_boas_vindas[256];
+                sprintf(msg_boas_vindas, "WELCOME|Player %d: %s\n", id_jogador, token);
+                send(socket_cliente, msg_boas_vindas, strlen(msg_boas_vindas), 0);
                 
-                char join_msg[256];
-                sprintf(join_msg, "PLAYER_JOIN|%s joined the game\n", token);
-                broadcast_message(join_msg, player_id);
-                printf("Player %d (%s) joined\n", player_id, token);
+                char msg_entrou[256];
+                sprintf(msg_entrou, "PLAYER_JOIN|%s joined the game\n", token);
+                transmitir_mensagem(msg_entrou, id_jogador);
+                printf("Jogador %d (%s) entrou\n", id_jogador, token);
             }
         } else if (strcmp(token, "START") == 0) {
-            EnterCriticalSection(&game_state.game_mutex);
-            if (!game_state.game_started && game_state.player_count >= 1) {
-                game_state.game_started = 1;
-                initialize_game();
-                char start_msg[] = "GAME_START|Game started!\n";
-                broadcast_message(start_msg, -1);
+            EnterCriticalSection(&estado_jogo.mutex_jogo);
+            if (!estado_jogo.jogo_iniciado && estado_jogo.total_jogadores >= 1) {
+                estado_jogo.jogo_iniciado = 1;
+                inicializar_jogo();
+                char msg_inicio[] = "GAME_START|Game started!\n";
+                transmitir_mensagem(msg_inicio, -1);
                 
-                for (int i = 0; i < game_state.player_count; i++) {
-                    if (game_state.players[i].active) {
-                        send_board_state(game_state.players[i].socket);
+                for (int i = 0; i < estado_jogo.total_jogadores; i++) {
+                    if (estado_jogo.jogadores[i].ativo) {
+                        enviar_estado_tabuleiro(estado_jogo.jogadores[i].socket);
                     }
                 }
-                send_scores();
-                send_turn_info();
-                printf("Game started with %d players\n", game_state.player_count);
+                enviar_pontuacoes();
+                enviar_info_turno();
+                printf("Jogo iniciado com %d jogadores\n", estado_jogo.total_jogadores);
             }
-            LeaveCriticalSection(&game_state.game_mutex);
+            LeaveCriticalSection(&estado_jogo.mutex_jogo);
         } else if (strcmp(token, "MOVE") == 0) {
             token = strtok(NULL, "|\n\r");
             if (token != NULL) {
                 int pos1, pos2;
                 if (sscanf(token, "%d,%d", &pos1, &pos2) == 2) {
-                    printf("Parsed move: %d,%d\n", pos1, pos2);
-                    handle_move(player_id, pos1, pos2);
+                    printf("Jogada analisada: %d,%d\n", pos1, pos2);
+                    processar_jogada(id_jogador, pos1, pos2);
                 } else {
-                    printf("Failed to parse move: %s\n", token);
+                    printf("Falha ao analisar jogada: %s\n", token);
                 }
             }
         } else if (strcmp(token, "CHAT") == 0) {
-            char* chat_message = strtok(NULL, "|\n\r");
-            if (chat_message != NULL) {
-                char chat_broadcast_msg[512];
-                sprintf(chat_broadcast_msg, "CHAT|%s: %s\n", 
-                        game_state.players[player_id].name, chat_message);
-                broadcast_message(chat_broadcast_msg, -1);
-                printf("Chat message from %s: %s\n", game_state.players[player_id].name, chat_message);
+            char* mensagem_chat = strtok(NULL, "|\n\r");
+            if (mensagem_chat != NULL) {
+                char msg_chat_transmitir[512];
+                sprintf(msg_chat_transmitir, "CHAT|%s: %s\n", 
+                        estado_jogo.jogadores[id_jogador].nome, mensagem_chat);
+                transmitir_mensagem(msg_chat_transmitir, -1);
+                printf("Mensagem de chat de %s: %s\n", estado_jogo.jogadores[id_jogador].nome, mensagem_chat);
             }
         }
     }
     
-    EnterCriticalSection(&game_state.game_mutex);
-    game_state.players[player_id].active = 0;
-    printf("Player %d disconnected\n", player_id);
+    EnterCriticalSection(&estado_jogo.mutex_jogo);
+    estado_jogo.jogadores[id_jogador].ativo = 0;
+    printf("Jogador %d desconectou\n", id_jogador);
     
-    char disconnect_msg[256];
-    sprintf(disconnect_msg, "PLAYER_LEFT|%s left the game\n", 
-            game_state.players[player_id].name);
-    broadcast_message(disconnect_msg, player_id);
-    LeaveCriticalSection(&game_state.game_mutex);
+    char msg_desconexao[256];
+    sprintf(msg_desconexao, "PLAYER_LEFT|%s left the game\n", 
+            estado_jogo.jogadores[id_jogador].nome);
+    transmitir_mensagem(msg_desconexao, id_jogador);
+    LeaveCriticalSection(&estado_jogo.mutex_jogo);
     
-    closesocket(client_socket);
+    closesocket(socket_cliente);
     return 0;
 }
 
-void print_local_ip(int port) {
+void imprimir_ip_local(int porta) {
     SOCKET sock = socket(AF_INET, SOCK_DGRAM, 0);
     if (sock == INVALID_SOCKET) {
-        printf("Failed to create socket with error: %d\n", WSAGetLastError());
-        printf("Memory Game Server started on port %d on host 0.0.0.0 (could not determine local IP)\n", port);
+        printf("Falha ao criar socket com erro: %d\n", WSAGetLastError());
+        printf("Servidor do Jogo de Memoria iniciado na porta %d no host 0.0.0.0 (nao foi possivel determinar IP local)\n", porta);
         return;
     }
 
-    struct sockaddr_in remote_addr;
-    memset(&remote_addr, 0, sizeof(remote_addr));
-    remote_addr.sin_family = AF_INET;
-    remote_addr.sin_addr.s_addr = inet_addr("8.8.8.8");
-    remote_addr.sin_port = htons(53);
+    struct sockaddr_in endereco_remoto;
+    memset(&endereco_remoto, 0, sizeof(endereco_remoto));
+    endereco_remoto.sin_family = AF_INET;
+    endereco_remoto.sin_addr.s_addr = inet_addr("8.8.8.8");
+    endereco_remoto.sin_port = htons(53);
 
-    if (connect(sock, (SOCKADDR*)&remote_addr, sizeof(remote_addr)) == SOCKET_ERROR) {
-        printf("Failed to connect to external server with error: %d\n", WSAGetLastError());
+    if (connect(sock, (SOCKADDR*)&endereco_remoto, sizeof(endereco_remoto)) == SOCKET_ERROR) {
+        printf("Falha ao conectar com servidor externo com erro: %d\n", WSAGetLastError());
         closesocket(sock);
-        printf("Memory Game Server started on port %d on host 0.0.0.0 (could not determine local IP)\n", port);
+        printf("Servidor do Jogo de Memoria iniciado na porta %d no host 0.0.0.0 (nao foi possivel determinar IP local)\n", porta);
         return;
     }
 
-    struct sockaddr_in local_addr;
-    int addr_len = sizeof(local_addr);
-    if (getsockname(sock, (SOCKADDR*)&local_addr, &addr_len) == SOCKET_ERROR) {
-        printf("getsockname failed with error: %d\n", WSAGetLastError());
+    struct sockaddr_in endereco_local;
+    int tamanho_endereco = sizeof(endereco_local);
+    if (getsockname(sock, (SOCKADDR*)&endereco_local, &tamanho_endereco) == SOCKET_ERROR) {
+        printf("getsockname falhou com erro: %d\n", WSAGetLastError());
         closesocket(sock);
-        printf("Memory Game Server started on port %d on host 0.0.0.0 (could not determine local IP)\n", port);
+        printf("Servidor do Jogo de Memoria iniciado na porta %d no host 0.0.0.0 (nao foi possivel determinar IP local)\n", porta);
         return;
     }
 
-    char ip_string[INET_ADDRSTRLEN];
-    DWORD ip_string_len = INET_ADDRSTRLEN;
-    if (WSAAddressToString((SOCKADDR*)&local_addr, sizeof(local_addr), NULL, ip_string, &ip_string_len) == 0) {
-        printf("Memory Game Server started on port %d on host %s\n", port, ip_string);
+    char string_ip[INET_ADDRSTRLEN];
+    DWORD tamanho_string_ip = INET_ADDRSTRLEN;
+    if (WSAAddressToString((SOCKADDR*)&endereco_local, sizeof(endereco_local), NULL, string_ip, &tamanho_string_ip) == 0) {
+        printf("Servidor do Jogo de Memoria iniciado na porta %d no host %s\n", porta, string_ip);
     } else {
-        printf("WSAAddressToString failed with error: %d\n", WSAGetLastError());
-        printf("Memory Game Server started on port %d on host 0.0.0.0 (could not determine local IP)\n", port);
+        printf("WSAAddressToString falhou com erro: %d\n", WSAGetLastError());
+        printf("Servidor do Jogo de Memoria iniciado na porta %d no host 0.0.0.0 (nao foi possivel determinar IP local)\n", porta);
     }
     
     closesocket(sock);
@@ -412,75 +407,75 @@ void print_local_ip(int port) {
 
 int main() {
     WSADATA wsaData;
-    SOCKET server_socket, client_socket;
-    struct sockaddr_in server_addr, client_addr;
-    int client_len = sizeof(client_addr);
+    SOCKET socket_servidor, socket_cliente;
+    struct sockaddr_in endereco_servidor, endereco_cliente;
+    int tamanho_cliente = sizeof(endereco_cliente);
     
     if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
-        printf("WSAStartup failed.\n");
+        printf("WSAStartup falhou.\n");
         return 1;
     }
 
-    initialize_server();
+    inicializar_servidor();
     
-    server_socket = socket(AF_INET, SOCK_STREAM, 0);
-    if (server_socket == INVALID_SOCKET) {
-        printf("Socket creation failed with error: %d\n", WSAGetLastError());
+    socket_servidor = socket(AF_INET, SOCK_STREAM, 0);
+    if (socket_servidor == INVALID_SOCKET) {
+        printf("Criacao de socket falhou com erro: %d\n", WSAGetLastError());
         WSACleanup();
         return 1;
     }
     
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_addr.s_addr = INADDR_ANY;
-    server_addr.sin_port = htons(PORT);
+    endereco_servidor.sin_family = AF_INET;
+    endereco_servidor.sin_addr.s_addr = INADDR_ANY;
+    endereco_servidor.sin_port = htons(PORTA);
     
-    if (bind(server_socket, (struct sockaddr*)&server_addr, sizeof(server_addr)) == SOCKET_ERROR) {
-        printf("Bind failed with error: %d\n", WSAGetLastError());
-        closesocket(server_socket);
+    if (bind(socket_servidor, (struct sockaddr*)&endereco_servidor, sizeof(endereco_servidor)) == SOCKET_ERROR) {
+        printf("Bind falhou com erro: %d\n", WSAGetLastError());
+        closesocket(socket_servidor);
         WSACleanup();
         return 1;
     }
     
-    if (listen(server_socket, MAX_PLAYERS) == SOCKET_ERROR) {
-        printf("Listen failed with error: %d\n", WSAGetLastError());
-        closesocket(server_socket);
+    if (listen(socket_servidor, MAX_JOGADORES) == SOCKET_ERROR) {
+        printf("Listen falhou com erro: %d\n", WSAGetLastError());
+        closesocket(socket_servidor);
         WSACleanup();
         return 1;
     }
     
-    print_local_ip(PORT);
-    printf("Waiting for players...\n");
+    imprimir_ip_local(PORTA);
+    printf("Aguardando jogadores...\n");
     
     while (1) {
-        client_socket = accept(server_socket, (struct sockaddr*)&client_addr, &client_len);
-        if (client_socket == INVALID_SOCKET) {
-            printf("Accept failed with error: %d\n", WSAGetLastError());
+        socket_cliente = accept(socket_servidor, (struct sockaddr*)&endereco_cliente, &tamanho_cliente);
+        if (socket_cliente == INVALID_SOCKET) {
+            printf("Accept falhou com erro: %d\n", WSAGetLastError());
             continue;
         }
         
-        printf("New connection accepted\n");
+        printf("Nova conexao aceita\n");
         
         HANDLE hThread;
-        SOCKET* client_sock_ptr = (SOCKET*)malloc(sizeof(SOCKET));
-        if (client_sock_ptr == NULL) {
-            printf("Failed to allocate memory for client socket.\n");
-            closesocket(client_socket);
+        SOCKET* ptr_socket_cliente = (SOCKET*)malloc(sizeof(SOCKET));
+        if (ptr_socket_cliente == NULL) {
+            printf("Falha ao alocar memoria para socket do cliente.\n");
+            closesocket(socket_cliente);
             continue;
         }
-        *client_sock_ptr = client_socket;
+        *ptr_socket_cliente = socket_cliente;
         
-        hThread = CreateThread(NULL, 0, handle_client, client_sock_ptr, 0, NULL);
+        hThread = CreateThread(NULL, 0, gerenciar_cliente, ptr_socket_cliente, 0, NULL);
         if (hThread == NULL) {
-            printf("Thread creation failed with error: %d\n", GetLastError());
-            free(client_sock_ptr);
-            closesocket(client_socket);
+            printf("Criacao de thread falhou com erro: %d\n", GetLastError());
+            free(ptr_socket_cliente);
+            closesocket(socket_cliente);
         } else {
             CloseHandle(hThread);
         }
     }
     
-    closesocket(server_socket);
-    DeleteCriticalSection(&game_state.game_mutex);
+    closesocket(socket_servidor);
+    DeleteCriticalSection(&estado_jogo.mutex_jogo);
     WSACleanup();
     return 0;
 }
