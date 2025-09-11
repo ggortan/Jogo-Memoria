@@ -157,7 +157,7 @@ public class JogoMemoriaCliente extends JFrame {
 
         JPanel painelEntrada = new JPanel(new BorderLayout());
         campoEntradaChat = new JTextField();
-        botaoEnviarChat = new JButton("➤");
+        botaoEnviarChat = new JButton("<Enviar>");
         botaoEnviarChat.setFont(new Font("Arial", Font.BOLD, 16));
         
         campoEntradaChat.addActionListener(e -> enviarMensagem());
@@ -177,7 +177,7 @@ public class JogoMemoriaCliente extends JFrame {
         botaoIniciar.setEnabled(false);
         botaoIniciar.addActionListener(e -> {
             if (conectado && escritor != null) {
-                escritor.println("START|");
+                escritor.println("INICIO|");
                 adicionarMensagem("Solicitando início...");
             }
         });
@@ -245,7 +245,7 @@ public class JogoMemoriaCliente extends JFrame {
             botaoIniciar.setEnabled(true);
             labelStatus.setText("Conectado");
 
-            escritor.println("JOIN|" + nomeJogador);
+            escritor.println("ENTRADA|" + nomeJogador);
 
             Thread threadMensagens = new Thread(this::escutarMensagens);
             threadMensagens.start();
@@ -281,7 +281,7 @@ public class JogoMemoriaCliente extends JFrame {
         try {
             String mensagem;
             while (conectado && (mensagem = leitor.readLine()) != null) {
-                System.out.println("<<< RAW DO SERVIDOR: [" + mensagem + "]");
+                System.out.println("SERVIDOR: [" + mensagem + "]");
                 final String mensagemFinal = mensagem;
                 SwingUtilities.invokeLater(() -> processarMensagem(mensagemFinal));
             }
@@ -301,24 +301,24 @@ public class JogoMemoriaCliente extends JFrame {
         System.out.println("Comando interpretado: [" + comando + "]");
 
         switch (comando) {
-            case "WELCOME": adicionarMensagem("Bem-vindo! " + partes[1]); break;
-            case "PLAYER_JOIN": adicionarMensagem(partes[1]); break;
-            case "PLAYER_LEFT": adicionarMensagem(partes[1]); break;
-            case "TEST": adicionarMensagem("Mensagem de teste recebida!"); break;
+            case "BEM_VINDO": adicionarMensagem("Bem-vindo! " + partes[1]); break;
+            case "JOGADOR_ENTRADA": adicionarMensagem(partes[1]); break;
+            case "JOGADOR_SAIDA": adicionarMensagem(partes[1]); break;
+            case "TESTE": adicionarMensagem("Mensagem de teste recebida!"); break;
             case "CHAT": 
                 adicionarMensagem(partes[1]);
                 break;
-            case "GAME_START":
+            case "JOGO_INICIO":
                 adicionarMensagem("Jogo iniciado!");
                 botaoIniciar.setEnabled(false);
                 break;
-            case "BOARD":
+            case "TABULEIRO":
                 atualizarTabuleiro(partes[1]);
                 break;
-            case "SCORES":
+            case "PONTUACAO":
                 atualizarPontuacoes(partes[1]);
                 break;
-            case "TURN":
+            case "TURNO":
                 String nomeJogadorAtual = partes[2];
                 ehMinhaVez = nomeJogadorAtual.equals(nomeJogador);
                 if (ehMinhaVez) {
@@ -335,7 +335,7 @@ public class JogoMemoriaCliente extends JFrame {
                     }
                 }
                 break;
-            case "REVEAL":
+            case "REVELA":
                 String[] posicoes = partes[1].split(",");
                 String[] valores = partes[2].split(",");
                 int pos1 = Integer.parseInt(posicoes[0]);
@@ -345,8 +345,8 @@ public class JogoMemoriaCliente extends JFrame {
 
                 botoesCartas[pos1].setText(val1);
                 botoesCartas[pos2].setText(val2);
-                botoesCartas[pos1].setBackground(Color.YELLOW);
-                botoesCartas[pos2].setBackground(Color.YELLOW);
+                botoesCartas[pos1].setBackground(Color.MAGENTA);
+                botoesCartas[pos2].setBackground(Color.MAGENTA);
 
                 adicionarMensagem("Cartas: " + val1 + " e " + val2);
 
@@ -363,22 +363,22 @@ public class JogoMemoriaCliente extends JFrame {
                 timer.setRepeats(false);
                 timer.start();
                 break;
-            case "MATCH":
+            case "PAR":
                 adicionarMensagem("Par encontrado!");
                 cartasSelecionadas.clear();
                 break;
-            case "NO_MATCH":
+            case "SEM_PAR":
                 adicionarMensagem("Não é um par!");
                 cartasSelecionadas.clear();
                 break;
-            case "GAME_END":
+            case "JOGO_FIM":
                 adicionarMensagem("Fim de jogo! " + partes[1]);
                 habilitarTabuleiro(false);
                 labelStatus.setText("Finalizado");
                 botaoIniciar.setEnabled(true);
                 cartasSelecionadas.clear();
                 break;
-            case "ERROR":
+            case "ERRO":
                 JOptionPane.showMessageDialog(this, "Erro: " + partes[1]);
                 cartasSelecionadas.clear();
                 break;
@@ -418,7 +418,7 @@ public class JogoMemoriaCliente extends JFrame {
         if (cartasSelecionadas.size() == 2) {
             int pos1 = cartasSelecionadas.get(0).intValue();
             int pos2 = cartasSelecionadas.get(1).intValue();
-            escritor.println("MOVE|" + pos1 + "," + pos2);
+            escritor.println("MOVIMENTO|" + pos1 + "," + pos2);
 
             habilitarTabuleiro(false);
             adicionarMensagem("Escolheu: " + pos1 + " e " + pos2);
