@@ -1,4 +1,4 @@
-//Versão: 2.0.1
+//Versão: 2.0.4
 
 import javax.swing.*;
 import java.awt.*;
@@ -12,6 +12,8 @@ public class JogoMemoriaCliente extends JFrame {
     private static final int PORTA_SERVIDOR_PADRAO = 8080;
     private static final int TAMANHO_TABULEIRO = 16;
     private static final String ARQUIVO_CONFIG = "server_config.txt";
+    private static final int USA_ICONES = 1; // 0 para usar os números e 1 para usar os ícones
+    private static final String CAMINHO_ICONES = "icones/";
 
     private Socket socket;
     private BufferedReader leitor;
@@ -26,7 +28,7 @@ public class JogoMemoriaCliente extends JFrame {
     private JTextArea areaMensagens;
     private JTextArea areaPontuacao;
     private JLabel labelStatus;
-    
+
     private JTextField campoEntradaChat;
     private JButton botaoEnviarChat;
 
@@ -114,7 +116,7 @@ public class JogoMemoriaCliente extends JFrame {
         botaoConfig = new JButton();
         botaoConfig.setToolTipText("Configurar servidor");
         try {
-            botaoConfig.setText("\u2699"); 
+            botaoConfig.setText("\u2699");
             botaoConfig.setFont(new Font("Dialog", Font.PLAIN, 18));
         } catch (Exception ex) {
             botaoConfig.setText("Config");
@@ -132,7 +134,9 @@ public class JogoMemoriaCliente extends JFrame {
             botoesCartas[i] = new JButton("?");
             botoesCartas[i].setFont(new Font("Arial", Font.BOLD, 24));
             botoesCartas[i].setPreferredSize(new Dimension(80, 80));
-            botoesCartas[i].setEnabled(false);
+            botoesCartas[i].setForeground(Color.BLACK); // Texto sempre preto
+            botoesCartas[i].setHorizontalTextPosition(SwingConstants.CENTER);
+            botoesCartas[i].setVerticalTextPosition(SwingConstants.CENTER);
 
             final int indice = i;
             botoesCartas[i].addActionListener(e -> selecionarCarta(indice));
@@ -148,7 +152,7 @@ public class JogoMemoriaCliente extends JFrame {
         JScrollPane scrollPontuacao = new JScrollPane(areaPontuacao);
         scrollPontuacao.setBorder(BorderFactory.createTitledBorder("Placar"));
         painelDireito.add(scrollPontuacao, BorderLayout.NORTH);
-        
+
         JPanel painelMensagemChat = new JPanel(new BorderLayout());
         painelMensagemChat.setBorder(BorderFactory.createTitledBorder("Mensagens"));
 
@@ -161,10 +165,10 @@ public class JogoMemoriaCliente extends JFrame {
         campoEntradaChat = new JTextField();
         botaoEnviarChat = new JButton("<Enviar>");
         botaoEnviarChat.setFont(new Font("Arial", Font.BOLD, 16));
-        
+
         campoEntradaChat.addActionListener(e -> enviarMensagem());
         botaoEnviarChat.addActionListener(e -> enviarMensagem());
-        
+
         painelEntrada.add(campoEntradaChat, BorderLayout.CENTER);
         painelEntrada.add(botaoEnviarChat, BorderLayout.EAST);
 
@@ -174,7 +178,7 @@ public class JogoMemoriaCliente extends JFrame {
         add(painelDireito, BorderLayout.EAST);
 
         JPanel painelInferior = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
-        
+
         botaoIniciar = new JButton("Iniciar Jogo");
         botaoIniciar.setEnabled(false);
         botaoIniciar.addActionListener(e -> {
@@ -188,13 +192,13 @@ public class JogoMemoriaCliente extends JFrame {
         labelStatus = new JLabel("Desconectado");
         labelStatus.setBorder(BorderFactory.createEmptyBorder(0, 10, 0, 0));
         painelInferior.add(labelStatus);
-        
+
         add(painelInferior, BorderLayout.SOUTH);
 
         pack();
         setLocationRelativeTo(null);
     }
-    
+
     private void enviarMensagem() {
         String mensagem = campoEntradaChat.getText().trim();
         if (!mensagem.isEmpty() && conectado && escritor != null) {
@@ -307,7 +311,7 @@ public class JogoMemoriaCliente extends JFrame {
             case "JOGADOR_ENTRADA": adicionarMensagem(partes[1]); break;
             case "JOGADOR_SAIDA": adicionarMensagem(partes[1]); break;
             case "TESTE": adicionarMensagem("Mensagem de teste recebida!"); break;
-            case "CHAT": 
+            case "CHAT":
                 adicionarMensagem(partes[1]);
                 break;
             case "JOGO_INICIO":
@@ -345,8 +349,8 @@ public class JogoMemoriaCliente extends JFrame {
                 String val1 = valores[0];
                 String val2 = valores[1];
 
-                botoesCartas[pos1].setText(val1);
-                botoesCartas[pos2].setText(val2);
+                setBotaoCarta(pos1, val1, true);
+                setBotaoCarta(pos2, val2, true);
                 botoesCartas[pos1].setBackground(Color.MAGENTA);
                 botoesCartas[pos2].setBackground(Color.MAGENTA);
 
@@ -354,11 +358,11 @@ public class JogoMemoriaCliente extends JFrame {
 
                 Timer timer = new Timer(2000, e -> {
                     if (cartasTabuleiro[pos1].equals("X")) {
-                        botoesCartas[pos1].setText("?");
+                        setBotaoCarta(pos1, "X", false);
                         botoesCartas[pos1].setBackground(null);
                     }
                     if (cartasTabuleiro[pos2].equals("X")) {
-                        botoesCartas[pos2].setText("?");
+                        setBotaoCarta(pos2, "X", false);
                         botoesCartas[pos2].setBackground(null);
                     }
                 });
@@ -392,28 +396,74 @@ public class JogoMemoriaCliente extends JFrame {
         for (int i = 0; i < TAMANHO_TABULEIRO && i < cartas.length; i++) {
             cartasTabuleiro[i] = cartas[i];
             if (!cartas[i].equals("X")) {
-                botoesCartas[i].setText(cartas[i]);
-                botoesCartas[i].setEnabled(false);
+                setBotaoCarta(i, cartas[i], true);
                 botoesCartas[i].setBackground(Color.GREEN);
             } else {
-                botoesCartas[i].setText("?");
+                setBotaoCarta(i, "X", false);
                 botoesCartas[i].setBackground(null);
-                botoesCartas[i].setEnabled(ehMinhaVez);
+            }
+            // NUNCA setEnabled aqui! O controle é feito por habilitarTabuleiro
+        }
+    }
+
+    private void habilitarTabuleiro(boolean habilitar) {
+        for (int i = 0; i < TAMANHO_TABULEIRO; i++) {
+            if (cartasTabuleiro[i].equals("X")) {
+                botoesCartas[i].setEnabled(habilitar);
+            } else {
+                botoesCartas[i].setEnabled(false);
             }
         }
     }
 
+    // Função para desenhar carta como ícone ou número
+    private void setBotaoCarta(int indice, String valor, boolean revelado) {
+        botoesCartas[indice].setForeground(Color.BLACK);
+        if (USA_ICONES == 1 && !valor.equals("X")) {
+            try {
+                String nomeIcone = valor;
+                if (valor.matches("[A-Za-z]")) {
+                    nomeIcone = Integer.toString((Character.toUpperCase(valor.charAt(0)) - 'A') + 1);
+                }
+                ImageIcon icone = carregarIcone(nomeIcone);
+                botoesCartas[indice].setIcon(icone);
+                botoesCartas[indice].setDisabledIcon(icone); // Mantém ícone colorido mesmo desabilitado
+                botoesCartas[indice].setText("");
+            } catch (Exception ex) {
+                botoesCartas[indice].setIcon(null);
+                botoesCartas[indice].setText(valor);
+            }
+        } else if (!valor.equals("X")) {
+            botoesCartas[indice].setIcon(null);
+            botoesCartas[indice].setText(valor);
+        } else {
+            botoesCartas[indice].setIcon(null);
+            botoesCartas[indice].setText("?");
+        }
+    }
+
+    // Retorna o ícone do diretório CAMINHO_ICONES + numero.png
+    private ImageIcon carregarIcone(String valor) {
+        String caminho = CAMINHO_ICONES + valor + ".png";
+        ImageIcon icone = new ImageIcon(caminho);
+        if (icone.getIconWidth() > 0) {
+            Image img = icone.getImage().getScaledInstance(48, 48, Image.SCALE_SMOOTH);
+            return new ImageIcon(img);
+        }
+        return icone;
+    }
+
     private void selecionarCarta(int indice) {
-        if (!ehMinhaVez || !botoesCartas[indice].isEnabled() || cartasSelecionadas.size() >= 2) {
+        // Bloqueia interação se não for a vez, se já selecionou 2 cartas, se carta já foi aberta
+        if (!ehMinhaVez || cartasSelecionadas.size() >= 2 || !cartasTabuleiro[indice].equals("X")) {
             return;
         }
-
+        // Previne selecionar duas vezes a mesma carta
         for (Integer indiceSelecionado : cartasSelecionadas) {
             if (indiceSelecionado.intValue() == indice) {
                 return;
             }
         }
-
         cartasSelecionadas.add(Integer.valueOf(indice));
         botoesCartas[indice].setBackground(Color.CYAN);
 
@@ -422,7 +472,7 @@ public class JogoMemoriaCliente extends JFrame {
             int pos2 = cartasSelecionadas.get(1).intValue();
             escritor.println("MOVIMENTO|" + pos1 + "," + pos2);
 
-            habilitarTabuleiro(false);
+            // Não precisa desabilitar botões, pois o controle é todo por lógica
             adicionarMensagem("Escolheu: " + pos1 + " e " + pos2);
         }
     }
@@ -444,23 +494,15 @@ public class JogoMemoriaCliente extends JFrame {
         areaPontuacao.setText(textoPontuacao.toString());
     }
 
-    private void habilitarTabuleiro(boolean habilitar) {
-        for (int i = 0; i < TAMANHO_TABULEIRO; i++) {
-            if (cartasTabuleiro[i].equals("X")) {
-                botoesCartas[i].setEnabled(habilitar);
-            }
-        }
-    }
-
     private void reiniciarTabuleiro() {
         cartasSelecionadas.clear();
         ehMinhaVez = false;
 
         for (int i = 0; i < TAMANHO_TABULEIRO; i++) {
             cartasTabuleiro[i] = "X";
-            botoesCartas[i].setText("?");
-            botoesCartas[i].setEnabled(false);
+            setBotaoCarta(i, "X", false);
             botoesCartas[i].setBackground(null);
+            botoesCartas[i].setEnabled(false);
         }
 
         areaPontuacao.setText("");
