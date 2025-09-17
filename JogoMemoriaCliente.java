@@ -12,6 +12,7 @@ public class JogoMemoriaCliente extends JFrame {
     private static final int PORTA_SERVIDOR_PADRAO = 8080;
     private static final int TAMANHO_TABULEIRO = 16;
     private static final String ARQUIVO_CONFIG = "server_config.txt";
+    private static final int USA_ICONES = 1; // 0 para usar os números, 1 para usar os ícones
 
     private Socket socket;
     private BufferedReader leitor;
@@ -131,6 +132,7 @@ public class JogoMemoriaCliente extends JFrame {
         for (int i = 0; i < TAMANHO_TABULEIRO; i++) {
             botoesCartas[i] = new JButton("?");
             botoesCartas[i].setFont(new Font("Arial", Font.BOLD, 24));
+            botoesCartas[i].setForeground(Color.BLACK); // Texto preto
             botoesCartas[i].setPreferredSize(new Dimension(80, 80));
             botoesCartas[i].setEnabled(false);
 
@@ -345,8 +347,8 @@ public class JogoMemoriaCliente extends JFrame {
                 String val1 = valores[0];
                 String val2 = valores[1];
 
-                botoesCartas[pos1].setText(val1);
-                botoesCartas[pos2].setText(val2);
+                configurarBotaoTextoIcone(botoesCartas[pos1], val1);
+                configurarBotaoTextoIcone(botoesCartas[pos2], val2);
                 botoesCartas[pos1].setBackground(Color.MAGENTA);
                 botoesCartas[pos2].setBackground(Color.MAGENTA);
 
@@ -355,10 +357,14 @@ public class JogoMemoriaCliente extends JFrame {
                 Timer timer = new Timer(2000, e -> {
                     if (cartasTabuleiro[pos1].equals("X")) {
                         botoesCartas[pos1].setText("?");
+                        botoesCartas[pos1].setIcon(null);
+                        botoesCartas[pos1].setForeground(Color.BLACK);
                         botoesCartas[pos1].setBackground(null);
                     }
                     if (cartasTabuleiro[pos2].equals("X")) {
                         botoesCartas[pos2].setText("?");
+                        botoesCartas[pos2].setIcon(null);
+                        botoesCartas[pos2].setForeground(Color.BLACK);
                         botoesCartas[pos2].setBackground(null);
                     }
                 });
@@ -392,11 +398,13 @@ public class JogoMemoriaCliente extends JFrame {
         for (int i = 0; i < TAMANHO_TABULEIRO && i < cartas.length; i++) {
             cartasTabuleiro[i] = cartas[i];
             if (!cartas[i].equals("X")) {
-                botoesCartas[i].setText(cartas[i]);
+                configurarBotaoTextoIcone(botoesCartas[i], cartas[i]);
                 botoesCartas[i].setEnabled(false);
                 botoesCartas[i].setBackground(Color.GREEN);
             } else {
                 botoesCartas[i].setText("?");
+                botoesCartas[i].setIcon(null);
+                botoesCartas[i].setForeground(Color.BLACK);
                 botoesCartas[i].setBackground(null);
                 botoesCartas[i].setEnabled(ehMinhaVez);
             }
@@ -459,6 +467,8 @@ public class JogoMemoriaCliente extends JFrame {
         for (int i = 0; i < TAMANHO_TABULEIRO; i++) {
             cartasTabuleiro[i] = "X";
             botoesCartas[i].setText("?");
+            botoesCartas[i].setIcon(null);
+            botoesCartas[i].setForeground(Color.BLACK);
             botoesCartas[i].setEnabled(false);
             botoesCartas[i].setBackground(null);
         }
@@ -470,6 +480,69 @@ public class JogoMemoriaCliente extends JFrame {
     private void adicionarMensagem(String msg) {
         areaMensagens.append(msg + "\n");
         areaMensagens.setCaretPosition(areaMensagens.getDocument().getLength());
+    }
+    
+    /**
+     * Converte letras para números (A=1, B=2, etc.)
+     */
+    private int converterLetraParaNumero(String texto) {
+        if (texto.length() == 1 && Character.isLetter(texto.charAt(0))) {
+            char letra = Character.toUpperCase(texto.charAt(0));
+            return letra - 'A' + 1;
+        }
+        return -1;
+    }
+    
+    /**
+     * Tenta carregar um ícone do diretório /icone/
+     */
+    private ImageIcon carregarIcone(String valor) {
+        try {
+            int numero = -1;
+            
+            // Tenta converter para número diretamente
+            try {
+                numero = Integer.parseInt(valor);
+            } catch (NumberFormatException e) {
+                // Se não for número, tenta converter letra
+                numero = converterLetraParaNumero(valor);
+            }
+            
+            if (numero > 0) {
+                String caminhoIcone = "icone/" + numero + ".png";
+                File arquivoIcone = new File(caminhoIcone);
+                if (arquivoIcone.exists()) {
+                    ImageIcon icone = new ImageIcon(caminhoIcone);
+                    // Redimensiona o ícone para caber no botão (60x60)
+                    Image img = icone.getImage().getScaledInstance(60, 60, Image.SCALE_SMOOTH);
+                    return new ImageIcon(img);
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("Erro ao carregar ícone para " + valor + ": " + e.getMessage());
+        }
+        return null;
+    }
+    
+    /**
+     * Configura o texto/ícone de um botão com texto preto
+     */
+    private void configurarBotaoTextoIcone(JButton botao, String valor) {
+        // Sempre definir texto preto
+        botao.setForeground(Color.BLACK);
+        
+        if (USA_ICONES == 1) {
+            ImageIcon icone = carregarIcone(valor);
+            if (icone != null) {
+                botao.setIcon(icone);
+                botao.setText(""); // Remove texto quando há ícone
+                return;
+            }
+        }
+        
+        // Se não usa ícones ou ícone não existe, usa texto
+        botao.setIcon(null);
+        botao.setText(valor);
     }
 
     public static void main(String[] args) {
