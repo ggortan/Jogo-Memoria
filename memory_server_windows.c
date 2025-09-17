@@ -249,7 +249,7 @@ void processar_jogada(int id_jogador, int pos1, int pos2) {
         }
         
         char msg_fim[256];
-        sprintf(msg_fim, "JOGO_FIM|Winner: %s with %d pairs!\n", 
+        sprintf(msg_fim, "JOGO_FIM|Vencedor: %s com %d acertos!\n", 
                 estado_jogo.jogadores[vencedor].nome, pontuacao_maxima);
         transmitir_mensagem(msg_fim, -1);
         estado_jogo.jogo_iniciado = 0;
@@ -480,4 +480,5 @@ int main() {
     DeleteCriticalSection(&estado_jogo.mutex_jogo);
     WSACleanup();
     return 0;
+
 }
