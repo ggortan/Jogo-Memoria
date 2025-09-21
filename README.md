@@ -39,8 +39,7 @@ O jogo utiliza a arquitetura cliente-servidor, empregando **sockets** para a com
 
 1. **Compile o servidor (em C):**
    ```sh
-   cd servidor
-   gcc -o memory_server_windows.exe memory_server_windows.c
+   gcc -o memory_server_windows.exe memory_server_windows.c -lws2_32
    ```
 
 2. **Execute o servidor:**
@@ -50,7 +49,6 @@ O jogo utiliza a arquitetura cliente-servidor, empregando **sockets** para a com
 
 3. **Compile o cliente (em Java):**
    ```sh
-   cd ../cliente
    javac JogoMemoriaCliente.java
    ```
 
