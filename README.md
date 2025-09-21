@@ -22,8 +22,9 @@ O jogo utiliza a arquitetura cliente-servidor, empregando **sockets** para a com
 
 ```
 /
-├── cliente/      # Implementação dos clientes em Java
-├── servidor/     # Implementação do servidor em C
+├── icones/                   # Icones
+├── JogoMemoriaCliente.java   # Cliente
+├── memory_server_windows.c   # Servidor
 └── README.md
 ```
 
