@@ -397,7 +397,7 @@ public class JogoMemoriaCliente extends JFrame {
             cartasTabuleiro[i] = cartas[i];
             if (!cartas[i].equals("X")) {
                 setBotaoCarta(i, cartas[i], true);
-                botoesCartas[i].setBackground(new Color(12, 140, 14, 0.5);
+                botoesCartas[i].setBackground(new Color(12, 140, 14, 0.5));
             } else {
                 setBotaoCarta(i, "X", false);
                 botoesCartas[i].setBackground(null);
