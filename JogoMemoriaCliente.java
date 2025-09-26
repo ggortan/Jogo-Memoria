@@ -351,8 +351,8 @@ public class JogoMemoriaCliente extends JFrame {
 
                 setBotaoCarta(pos1, val1, true);
                 setBotaoCarta(pos2, val2, true);
-                botoesCartas[pos1].setBackground(new Color(255, 91, 0, 0.25));
-                botoesCartas[pos2].setBackground(new Color(255, 91, 0, 0.25));
+                botoesCartas[pos1].setBackground(new Color(255, 91, 0, 64));
+                botoesCartas[pos2].setBackground(new Color(255, 91, 0, 64));
 
                 adicionarMensagem("Cartas: " + val1 + " e " + val2);
 
@@ -397,7 +397,7 @@ public class JogoMemoriaCliente extends JFrame {
             cartasTabuleiro[i] = cartas[i];
             if (!cartas[i].equals("X")) {
                 setBotaoCarta(i, cartas[i], true);
-                botoesCartas[i].setBackground(new Color(12, 140, 14, 0.5));
+                botoesCartas[i].setBackground(new Color(12, 140, 14, 130));
             } else {
                 setBotaoCarta(i, "X", false);
                 botoesCartas[i].setBackground(null);
@@ -465,7 +465,7 @@ public class JogoMemoriaCliente extends JFrame {
             }
         }
         cartasSelecionadas.add(Integer.valueOf(indice));
-        botoesCartas[indice].setBackground(new Color(0, 100, 255, 0.5));
+        botoesCartas[indice].setBackground(new Color(0, 100, 255, 130));
 
         if (cartasSelecionadas.size() == 2) {
             int pos1 = cartasSelecionadas.get(0).intValue();
