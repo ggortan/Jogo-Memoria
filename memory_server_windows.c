@@ -1,4 +1,4 @@
-//Versão: 2.0.1
+//Versão: 2.0.4
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -188,7 +188,7 @@ void processar_jogada(int id_jogador, int pos1, int pos2) {
     
     if (id_jogador != estado_jogo.jogador_atual || !estado_jogo.jogo_iniciado) {
         printf("Nao eh turno do jogador ou jogo nao iniciado\n");
-        char msg_erro[] = "ERRO|Not your turn or game not started\n";
+        char msg_erro[] = "ERRO|Nao eh sua vez ou o jogo nao comecou\n";
         send(estado_jogo.jogadores[id_jogador].socket, msg_erro, strlen(msg_erro), 0);
         LeaveCriticalSection(&estado_jogo.mutex_jogo);
         return;
@@ -482,4 +482,5 @@ int main() {
     return 0;
 
 }
+
 
