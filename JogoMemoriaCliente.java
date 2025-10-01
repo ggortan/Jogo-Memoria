@@ -351,10 +351,10 @@ public class JogoMemoriaCliente extends JFrame {
 
                 setBotaoCarta(pos1, val1, true);
                 setBotaoCarta(pos2, val2, true);
-                botoesCartas[pos1].setBackground(new Color(255, 91, 0, 64));
-                botoesCartas[pos2].setBackground(new Color(255, 91, 0, 64));
+                botoesCartas[pos1].setBackground(new Color(255, 221, 153));
+                botoesCartas[pos2].setBackground(new Color(255, 221, 153));
 
-                adicionarMensagem("Cartas: " + val1 + " e " + val2);
+                //adicionarMensagem("Cartas: " + val1 + " e " + val2);
 
                 Timer timer = new Timer(2000, e -> {
                     if (cartasTabuleiro[pos1].equals("X")) {
@@ -397,7 +397,7 @@ public class JogoMemoriaCliente extends JFrame {
             cartasTabuleiro[i] = cartas[i];
             if (!cartas[i].equals("X")) {
                 setBotaoCarta(i, cartas[i], true);
-                botoesCartas[i].setBackground(new Color(12, 140, 14, 130));
+                botoesCartas[i].setBackground(new Color(179, 255, 179));
             } else {
                 setBotaoCarta(i, "X", false);
                 botoesCartas[i].setBackground(null);
@@ -465,7 +465,7 @@ public class JogoMemoriaCliente extends JFrame {
             }
         }
         cartasSelecionadas.add(Integer.valueOf(indice));
-        botoesCartas[indice].setBackground(new Color(0, 100, 255, 130));
+        botoesCartas[indice].setBackground(new Color(153, 221, 255));
 
         if (cartasSelecionadas.size() == 2) {
             int pos1 = cartasSelecionadas.get(0).intValue();
@@ -473,7 +473,7 @@ public class JogoMemoriaCliente extends JFrame {
             escritor.println("MOVIMENTO|" + pos1 + "," + pos2);
 
             // Não precisa desabilitar botões, pois o controle é todo por lógica
-            adicionarMensagem("Escolheu: " + pos1 + " e " + pos2);
+            //adicionarMensagem("Escolheu: " + pos1 + " e " + pos2);
         }
     }
 
