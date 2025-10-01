@@ -365,6 +365,7 @@ DWORD WINAPI gerenciar_cliente(LPVOID lpParam) {
 }
 
 void imprimir_ip_local(int porta) {
+    // Função gerada para tentar pegar o IP do host
     SOCKET sock = socket(AF_INET, SOCK_DGRAM, 0);
     if (sock == INVALID_SOCKET) {
         printf("Falha ao criar socket com erro: %d\n", WSAGetLastError());
@@ -420,6 +421,8 @@ int main() {
 
     inicializar_servidor();
     
+
+    // Inicializa o socket do servidor
     socket_servidor = socket(AF_INET, SOCK_STREAM, 0);
     if (socket_servidor == INVALID_SOCKET) {
         printf("Criacao de socket falhou com erro: %d\n", WSAGetLastError());
@@ -448,6 +451,8 @@ int main() {
     imprimir_ip_local(PORTA);
     printf("Aguardando jogadores...\n");
     
+
+    // Loop de conexão socket com os clientes utilizando threads
     while (1) {
         socket_cliente = accept(socket_servidor, (struct sockaddr*)&endereco_cliente, &tamanho_cliente);
         if (socket_cliente == INVALID_SOCKET) {
@@ -478,6 +483,8 @@ int main() {
     
     closesocket(socket_servidor);
     DeleteCriticalSection(&estado_jogo.mutex_jogo);
+
+    // Libera os recursos de rede
     WSACleanup();
     return 0;
 

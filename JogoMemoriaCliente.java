@@ -241,6 +241,7 @@ public class JogoMemoriaCliente extends JFrame {
 
     private void conectarAoServidor() {
         try {
+            // Estabelece a conexão com o servidor via socket
             socket = new Socket(hostServidor, portaServidor);
             leitor = new BufferedReader(new InputStreamReader(socket.getInputStream()));
             escritor = new PrintWriter(socket.getOutputStream(), true);
@@ -265,6 +266,7 @@ public class JogoMemoriaCliente extends JFrame {
 
     private void desconectar() {
         try {
+            // Fecha a conexão socket
             conectado = false;
             if (socket != null) socket.close();
             if (leitor != null) leitor.close();
@@ -284,6 +286,7 @@ public class JogoMemoriaCliente extends JFrame {
     }
 
     private void escutarMensagens() {
+        // Listener de mensagens
         try {
             String mensagem;
             while (conectado && (mensagem = leitor.readLine()) != null) {
@@ -302,6 +305,7 @@ public class JogoMemoriaCliente extends JFrame {
     }
 
     private void processarMensagem(String mensagem) {
+        // Processa as mensagens e executa as funções
         String[] partes = mensagem.split("\\|");
         String comando = partes[0].trim();
         System.out.println("Comando interpretado: [" + comando + "]");
@@ -402,7 +406,7 @@ public class JogoMemoriaCliente extends JFrame {
                 setBotaoCarta(i, "X", false);
                 botoesCartas[i].setBackground(null);
             }
-            // NUNCA setEnabled aqui! O controle é feito por habilitarTabuleiro
+            // Não setEnabled aqui! O controle é feito por habilitarTabuleiro
         }
     }
 
