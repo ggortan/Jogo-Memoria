@@ -203,7 +203,7 @@ void processar_jogada(int id_jogador, int pos1, int pos2) {
         return;
     }
     
-    printf("Jogada valida - cartas: %d e %d\n", estado_jogo.cartas[pos1], estado_jogo.cartas[pos2]);
+    //printf("Jogada valida - cartas: %d e %d\n", estado_jogo.cartas[pos1], estado_jogo.cartas[pos2]);
     
     char msg_revelar[256];
     sprintf(msg_revelar, "REVELA|%d,%d|%d,%d\n", pos1, pos2, 
@@ -279,7 +279,7 @@ DWORD WINAPI gerenciar_cliente(LPVOID lpParam) {
     LeaveCriticalSection(&estado_jogo.mutex_jogo);
     
     if (id_jogador == -1) {
-        char msg_cheio[] = "ERRO|Server full\n";
+        char msg_cheio[] = "ERRO|Servidor cheio\n";
         send(socket_cliente, msg_cheio, strlen(msg_cheio), 0);
         closesocket(socket_cliente);
         return 1;
@@ -314,7 +314,7 @@ DWORD WINAPI gerenciar_cliente(LPVOID lpParam) {
             if (!estado_jogo.jogo_iniciado && estado_jogo.total_jogadores >= 1) {
                 estado_jogo.jogo_iniciado = 1;
                 inicializar_jogo();
-                char msg_inicio[] = "JOGO_INICIO|Game started!\n";
+                char msg_inicio[] = "JOGO_INICIO|Comecou o jogo!\n";
                 transmitir_mensagem(msg_inicio, -1);
                 
                 for (int i = 0; i < estado_jogo.total_jogadores; i++) {
@@ -482,3 +482,4 @@ int main() {
     return 0;
 
 }
+
