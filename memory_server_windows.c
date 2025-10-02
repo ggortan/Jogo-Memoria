@@ -35,7 +35,6 @@ typedef struct {
 
 void enviar_info_turno();
 DWORD WINAPI gerenciar_cliente(LPVOID lpParam);
-void imprimir_ip_local(int porta);
 void processar_jogada(int id_jogador, int pos1, int pos2);
 void transmitir_mensagem(const char* mensagem, int excluir_jogador);
 void enviar_estado_tabuleiro(SOCKET socket_jogador);
@@ -364,49 +363,6 @@ DWORD WINAPI gerenciar_cliente(LPVOID lpParam) {
     return 0;
 }
 
-void imprimir_ip_local(int porta) {
-    // Função gerada para tentar pegar o IP do host
-    SOCKET sock = socket(AF_INET, SOCK_DGRAM, 0);
-    if (sock == INVALID_SOCKET) {
-        printf("Falha ao criar socket com erro: %d\n", WSAGetLastError());
-        printf("Servidor do Jogo de Memoria iniciado na porta %d no host 0.0.0.0 (nao foi possivel determinar IP local)\n", porta);
-        return;
-    }
-
-    struct sockaddr_in endereco_remoto;
-    memset(&endereco_remoto, 0, sizeof(endereco_remoto));
-    endereco_remoto.sin_family = AF_INET;
-    endereco_remoto.sin_addr.s_addr = inet_addr("8.8.8.8");
-    endereco_remoto.sin_port = htons(53);
-
-    if (connect(sock, (SOCKADDR*)&endereco_remoto, sizeof(endereco_remoto)) == SOCKET_ERROR) {
-        printf("Falha ao conectar com servidor externo com erro: %d\n", WSAGetLastError());
-        closesocket(sock);
-        printf("Servidor do Jogo de Memoria iniciado na porta %d no host 0.0.0.0 (nao foi possivel determinar IP local)\n", porta);
-        return;
-    }
-
-    struct sockaddr_in endereco_local;
-    int tamanho_endereco = sizeof(endereco_local);
-    if (getsockname(sock, (SOCKADDR*)&endereco_local, &tamanho_endereco) == SOCKET_ERROR) {
-        printf("getsockname falhou com erro: %d\n", WSAGetLastError());
-        closesocket(sock);
-        printf("Servidor do Jogo de Memoria iniciado na porta %d no host 0.0.0.0 (nao foi possivel determinar IP local)\n", porta);
-        return;
-    }
-
-    char string_ip[INET_ADDRSTRLEN];
-    DWORD tamanho_string_ip = INET_ADDRSTRLEN;
-    if (WSAAddressToString((SOCKADDR*)&endereco_local, sizeof(endereco_local), NULL, string_ip, &tamanho_string_ip) == 0) {
-        printf("Servidor do Jogo de Memoria iniciado na porta %d no host %s\n", porta, string_ip);
-    } else {
-        printf("WSAAddressToString falhou com erro: %d\n", WSAGetLastError());
-        printf("Servidor do Jogo de Memoria iniciado na porta %d no host 0.0.0.0 (nao foi possivel determinar IP local)\n", porta);
-    }
-    
-    closesocket(sock);
-}
-
 
 int main() {
     WSADATA wsaData;
@@ -448,7 +404,6 @@ int main() {
         return 1;
     }
     
-    imprimir_ip_local(PORTA);
     printf("Aguardando jogadores...\n");
     
 
