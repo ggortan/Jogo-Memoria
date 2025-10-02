@@ -1,21 +1,24 @@
-//Versão: 2.0.4
+//Versão: 2.0.4 - Linux
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <winsock2.h>
-#include <ws2tcpip.h>
+#include <unistd.h>
+#include <pthread.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 #include <time.h>
+#include <errno.h>
+#include <ifaddrs.h>
 
 #define MAX_JOGADORES 4
 #define TAMANHO_TABULEIRO 16
 #define PORTA 8080
 #define TAMANHO_BUFFER 1024
 
-#pragma comment(lib, "Ws2_32.lib")
-
 typedef struct {
-    SOCKET socket;
+    int socket;
     int id;
     char nome[50];
     int pontuacao;
@@ -30,14 +33,15 @@ typedef struct {
     int total_jogadores;
     int jogador_atual;
     int jogo_iniciado;
-    CRITICAL_SECTION mutex_jogo;
+    pthread_mutex_t mutex_jogo;
 } EstadoJogo;
 
 void enviar_info_turno();
-DWORD WINAPI gerenciar_cliente(LPVOID lpParam);
+void* gerenciar_cliente(void* arg);
+void imprimir_ip_local(int porta);
 void processar_jogada(int id_jogador, int pos1, int pos2);
 void transmitir_mensagem(const char* mensagem, int excluir_jogador);
-void enviar_estado_tabuleiro(SOCKET socket_jogador);
+void enviar_estado_tabuleiro(int socket_jogador);
 void enviar_pontuacoes();
 int verificar_fim_jogo();
 int encontrar_proximo_jogador_ativo(int atual);
@@ -75,7 +79,7 @@ void inicializar_jogo() {
 void inicializar_servidor() {
     estado_jogo.total_jogadores = 0;
     estado_jogo.jogo_iniciado = 0;
-    InitializeCriticalSection(&estado_jogo.mutex_jogo);
+    pthread_mutex_init(&estado_jogo.mutex_jogo, NULL);
     
     for (int i = 0; i < MAX_JOGADORES; i++) {
         estado_jogo.jogadores[i].ativo = 0;
@@ -86,7 +90,7 @@ void inicializar_servidor() {
 
 void transmitir_mensagem(const char* mensagem, int excluir_jogador) {
     printf("Transmitindo: %s", mensagem);
-    EnterCriticalSection(&estado_jogo.mutex_jogo);
+    pthread_mutex_lock(&estado_jogo.mutex_jogo);
     
     int tamanho_msg = strlen(mensagem);
     
@@ -99,10 +103,10 @@ void transmitir_mensagem(const char* mensagem, int excluir_jogador) {
                                 mensagem + total_enviado, 
                                 tamanho_msg - total_enviado, 0);
                 
-                if (enviado == SOCKET_ERROR) {
+                if (enviado < 0) {
                     printf("Falha ao enviar para jogador %d, marcando como inativo\n", i);
                     estado_jogo.jogadores[i].ativo = 0;
-                    closesocket(estado_jogo.jogadores[i].socket);
+                    close(estado_jogo.jogadores[i].socket);
                     break;
                 }
                 
@@ -115,10 +119,10 @@ void transmitir_mensagem(const char* mensagem, int excluir_jogador) {
         }
     }
     
-    LeaveCriticalSection(&estado_jogo.mutex_jogo);
+    pthread_mutex_unlock(&estado_jogo.mutex_jogo);
 }
 
-void enviar_estado_tabuleiro(SOCKET socket_jogador) {
+void enviar_estado_tabuleiro(int socket_jogador) {
     char msg_tabuleiro[2048] = "TABULEIRO|";
     for (int i = 0; i < TAMANHO_TABULEIRO; i++) {
         char info_carta[10];
@@ -183,13 +187,13 @@ int encontrar_proximo_jogador_ativo(int atual) {
 void processar_jogada(int id_jogador, int pos1, int pos2) {
     printf("Processar jogada: jogador %d, posicoes %d,%d\n", id_jogador, pos1, pos2);
     
-    EnterCriticalSection(&estado_jogo.mutex_jogo);
+    pthread_mutex_lock(&estado_jogo.mutex_jogo);
     
     if (id_jogador != estado_jogo.jogador_atual || !estado_jogo.jogo_iniciado) {
         printf("Nao eh turno do jogador ou jogo nao iniciado\n");
         char msg_erro[] = "ERRO|Nao eh sua vez ou o jogo nao comecou\n";
         send(estado_jogo.jogadores[id_jogador].socket, msg_erro, strlen(msg_erro), 0);
-        LeaveCriticalSection(&estado_jogo.mutex_jogo);
+        pthread_mutex_unlock(&estado_jogo.mutex_jogo);
         return;
     }
     
@@ -198,11 +202,9 @@ void processar_jogada(int id_jogador, int pos1, int pos2) {
         printf("Jogada invalida\n");
         char msg_erro[] = "ERRO|Invalid move\n";
         send(estado_jogo.jogadores[id_jogador].socket, msg_erro, strlen(msg_erro), 0);
-        LeaveCriticalSection(&estado_jogo.mutex_jogo);
+        pthread_mutex_unlock(&estado_jogo.mutex_jogo);
         return;
     }
-    
-    //printf("Jogada valida - cartas: %d e %d\n", estado_jogo.cartas[pos1], estado_jogo.cartas[pos2]);
     
     char msg_revelar[256];
     sprintf(msg_revelar, "REVELA|%d,%d|%d,%d\n", pos1, pos2, 
@@ -220,7 +222,7 @@ void processar_jogada(int id_jogador, int pos1, int pos2) {
         transmitir_mensagem(msg_par, -1);
         
     } else {
-        Sleep(2000);
+        sleep(2);
         printf("Nao eh par\n");
         char msg_nao_par[] = "SEM_PAR|As cartas nao sao iguais!\n";
         transmitir_mensagem(msg_nao_par, -1);
@@ -257,16 +259,16 @@ void processar_jogada(int id_jogador, int pos1, int pos2) {
         enviar_info_turno();
     }
     
-    LeaveCriticalSection(&estado_jogo.mutex_jogo);
+    pthread_mutex_unlock(&estado_jogo.mutex_jogo);
 }
 
-DWORD WINAPI gerenciar_cliente(LPVOID lpParam) {
-    SOCKET socket_cliente = *(SOCKET*)lpParam;
-    free(lpParam);
+void* gerenciar_cliente(void* arg) {
+    int socket_cliente = *(int*)arg;
+    free(arg);
     char buffer[TAMANHO_BUFFER];
     int id_jogador = -1;
     
-    EnterCriticalSection(&estado_jogo.mutex_jogo);
+    pthread_mutex_lock(&estado_jogo.mutex_jogo);
     if (estado_jogo.total_jogadores < MAX_JOGADORES) {
         id_jogador = estado_jogo.total_jogadores;
         estado_jogo.jogadores[id_jogador].socket = socket_cliente;
@@ -275,13 +277,13 @@ DWORD WINAPI gerenciar_cliente(LPVOID lpParam) {
         estado_jogo.jogadores[id_jogador].ativo = 1;
         estado_jogo.total_jogadores++;
     }
-    LeaveCriticalSection(&estado_jogo.mutex_jogo);
+    pthread_mutex_unlock(&estado_jogo.mutex_jogo);
     
     if (id_jogador == -1) {
         char msg_cheio[] = "ERRO|Servidor cheio\n";
         send(socket_cliente, msg_cheio, strlen(msg_cheio), 0);
-        closesocket(socket_cliente);
-        return 1;
+        close(socket_cliente);
+        return NULL;
     }
     
     printf("Jogador %d conectado\n", id_jogador);
@@ -291,6 +293,8 @@ DWORD WINAPI gerenciar_cliente(LPVOID lpParam) {
         if (bytes_recebidos <= 0) {
             break;
         }
+        
+        buffer[bytes_recebidos] = '\0';
         
         char* token = strtok(buffer, "|\n\r");
         if (token == NULL) continue;
@@ -309,7 +313,7 @@ DWORD WINAPI gerenciar_cliente(LPVOID lpParam) {
                 printf("Jogador %d (%s) entrou\n", id_jogador, token);
             }
         } else if (strcmp(token, "INICIO") == 0) {
-            EnterCriticalSection(&estado_jogo.mutex_jogo);
+            pthread_mutex_lock(&estado_jogo.mutex_jogo);
             if (!estado_jogo.jogo_iniciado && estado_jogo.total_jogadores >= 1) {
                 estado_jogo.jogo_iniciado = 1;
                 inicializar_jogo();
@@ -325,7 +329,7 @@ DWORD WINAPI gerenciar_cliente(LPVOID lpParam) {
                 enviar_info_turno();
                 printf("Jogo iniciado com %d jogadores\n", estado_jogo.total_jogadores);
             }
-            LeaveCriticalSection(&estado_jogo.mutex_jogo);
+            pthread_mutex_unlock(&estado_jogo.mutex_jogo);
         } else if (strcmp(token, "MOVIMENTO") == 0) {
             token = strtok(NULL, "|\n\r");
             if (token != NULL) {
@@ -349,7 +353,7 @@ DWORD WINAPI gerenciar_cliente(LPVOID lpParam) {
         }
     }
     
-    EnterCriticalSection(&estado_jogo.mutex_jogo);
+    pthread_mutex_lock(&estado_jogo.mutex_jogo);
     estado_jogo.jogadores[id_jogador].ativo = 0;
     printf("Jogador %d desconectou\n", id_jogador);
     
@@ -357,32 +361,68 @@ DWORD WINAPI gerenciar_cliente(LPVOID lpParam) {
     sprintf(msg_desconexao, "JOGADOR_SAIDA|%s saiu do jogo\n", 
             estado_jogo.jogadores[id_jogador].nome);
     transmitir_mensagem(msg_desconexao, id_jogador);
-    LeaveCriticalSection(&estado_jogo.mutex_jogo);
+    pthread_mutex_unlock(&estado_jogo.mutex_jogo);
     
-    closesocket(socket_cliente);
-    return 0;
+    close(socket_cliente);
+    return NULL;
 }
 
+void imprimir_ip_local(int porta) {
+    struct ifaddrs *ifaddr, *ifa;
+    char host[NI_MAXHOST];
+    int encontrou_ip = 0;
 
-int main() {
-    WSADATA wsaData;
-    SOCKET socket_servidor, socket_cliente;
-    struct sockaddr_in endereco_servidor, endereco_cliente;
-    int tamanho_cliente = sizeof(endereco_cliente);
-    
-    if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
-        printf("WSAStartup falhou.\n");
-        return 1;
+    if (getifaddrs(&ifaddr) == -1) {
+        perror("getifaddrs");
+        printf("Servidor do Jogo de Memoria iniciado na porta %d no host 0.0.0.0 (nao foi possivel determinar IP local)\n", porta);
+        return;
     }
 
+    for (ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
+        if (ifa->ifa_addr == NULL)
+            continue;
+
+        if (ifa->ifa_addr->sa_family == AF_INET) {
+            int s = getnameinfo(ifa->ifa_addr, sizeof(struct sockaddr_in),
+                              host, NI_MAXHOST, NULL, 0, NI_NUMERICHOST);
+            if (s != 0) {
+                continue;
+            }
+
+            // Ignora localhost
+            if (strcmp(host, "127.0.0.1") != 0) {
+                printf("Servidor do Jogo de Memoria iniciado na porta %d no host %s\n", porta, host);
+                encontrou_ip = 1;
+                break;
+            }
+        }
+    }
+
+    if (!encontrou_ip) {
+        printf("Servidor do Jogo de Memoria iniciado na porta %d no host 0.0.0.0\n", porta);
+    }
+
+    freeifaddrs(ifaddr);
+}
+
+int main() {
+    int socket_servidor, socket_cliente;
+    struct sockaddr_in endereco_servidor, endereco_cliente;
+    socklen_t tamanho_cliente = sizeof(endereco_cliente);
+    
     inicializar_servidor();
     
-
-    // Inicializa o socket do servidor
     socket_servidor = socket(AF_INET, SOCK_STREAM, 0);
-    if (socket_servidor == INVALID_SOCKET) {
-        printf("Criacao de socket falhou com erro: %d\n", WSAGetLastError());
-        WSACleanup();
+    if (socket_servidor < 0) {
+        perror("Erro ao criar socket");
+        return 1;
+    }
+    
+    // Permite reutilizar a porta imediatamente
+    int opt = 1;
+    if (setsockopt(socket_servidor, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
+        perror("setsockopt");
+        close(socket_servidor);
         return 1;
     }
     
@@ -390,59 +430,49 @@ int main() {
     endereco_servidor.sin_addr.s_addr = INADDR_ANY;
     endereco_servidor.sin_port = htons(PORTA);
     
-    if (bind(socket_servidor, (struct sockaddr*)&endereco_servidor, sizeof(endereco_servidor)) == SOCKET_ERROR) {
-        printf("Bind falhou com erro: %d\n", WSAGetLastError());
-        closesocket(socket_servidor);
-        WSACleanup();
+    if (bind(socket_servidor, (struct sockaddr*)&endereco_servidor, sizeof(endereco_servidor)) < 0) {
+        perror("Erro no bind");
+        close(socket_servidor);
         return 1;
     }
     
-    if (listen(socket_servidor, MAX_JOGADORES) == SOCKET_ERROR) {
-        printf("Listen falhou com erro: %d\n", WSAGetLastError());
-        closesocket(socket_servidor);
-        WSACleanup();
+    if (listen(socket_servidor, MAX_JOGADORES) < 0) {
+        perror("Erro no listen");
+        close(socket_servidor);
         return 1;
     }
     
+    imprimir_ip_local(PORTA);
     printf("Aguardando jogadores...\n");
     
-
-    // Loop de conexão socket com os clientes utilizando threads
     while (1) {
         socket_cliente = accept(socket_servidor, (struct sockaddr*)&endereco_cliente, &tamanho_cliente);
-        if (socket_cliente == INVALID_SOCKET) {
-            printf("Accept falhou com erro: %d\n", WSAGetLastError());
+        if (socket_cliente < 0) {
+            perror("Erro no accept");
             continue;
         }
         
         printf("Nova conexao aceita\n");
         
-        HANDLE hThread;
-        SOCKET* ptr_socket_cliente = (SOCKET*)malloc(sizeof(SOCKET));
+        pthread_t thread_id;
+        int* ptr_socket_cliente = (int*)malloc(sizeof(int));
         if (ptr_socket_cliente == NULL) {
             printf("Falha ao alocar memoria para socket do cliente.\n");
-            closesocket(socket_cliente);
+            close(socket_cliente);
             continue;
         }
         *ptr_socket_cliente = socket_cliente;
         
-        hThread = CreateThread(NULL, 0, gerenciar_cliente, ptr_socket_cliente, 0, NULL);
-        if (hThread == NULL) {
-            printf("Criacao de thread falhou com erro: %d\n", GetLastError());
+        if (pthread_create(&thread_id, NULL, gerenciar_cliente, ptr_socket_cliente) != 0) {
+            perror("Erro ao criar thread");
             free(ptr_socket_cliente);
-            closesocket(socket_cliente);
+            close(socket_cliente);
         } else {
-            CloseHandle(hThread);
+            pthread_detach(thread_id);
         }
     }
     
-    closesocket(socket_servidor);
-    DeleteCriticalSection(&estado_jogo.mutex_jogo);
-
-    // Libera os recursos de rede
-    WSACleanup();
+    close(socket_servidor);
+    pthread_mutex_destroy(&estado_jogo.mutex_jogo);
     return 0;
-
 }
-
-
