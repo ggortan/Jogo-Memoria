@@ -10,7 +10,6 @@
 #include <arpa/inet.h>
 #include <time.h>
 #include <errno.h>
-#include <ifaddrs.h>
 
 #define MAX_JOGADORES 4
 #define TAMANHO_TABULEIRO 16
@@ -367,43 +366,6 @@ void* gerenciar_cliente(void* arg) {
     return NULL;
 }
 
-void imprimir_ip_local(int porta) {
-    struct ifaddrs *ifaddr, *ifa;
-    char host[NI_MAXHOST];
-    int encontrou_ip = 0;
-
-    if (getifaddrs(&ifaddr) == -1) {
-        perror("getifaddrs");
-        printf("Servidor do Jogo de Memoria iniciado na porta %d no host 0.0.0.0 (nao foi possivel determinar IP local)\n", porta);
-        return;
-    }
-
-    for (ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
-        if (ifa->ifa_addr == NULL)
-            continue;
-
-        if (ifa->ifa_addr->sa_family == AF_INET) {
-            int s = getnameinfo(ifa->ifa_addr, sizeof(struct sockaddr_in),
-                              host, NI_MAXHOST, NULL, 0, NI_NUMERICHOST);
-            if (s != 0) {
-                continue;
-            }
-
-            // Ignora localhost
-            if (strcmp(host, "127.0.0.1") != 0) {
-                printf("Servidor do Jogo de Memoria iniciado na porta %d no host %s\n", porta, host);
-                encontrou_ip = 1;
-                break;
-            }
-        }
-    }
-
-    if (!encontrou_ip) {
-        printf("Servidor do Jogo de Memoria iniciado na porta %d no host 0.0.0.0\n", porta);
-    }
-
-    freeifaddrs(ifaddr);
-}
 
 int main() {
     int socket_servidor, socket_cliente;
@@ -441,8 +403,7 @@ int main() {
         close(socket_servidor);
         return 1;
     }
-    
-    imprimir_ip_local(PORTA);
+
     printf("Aguardando jogadores...\n");
     
     while (1) {
